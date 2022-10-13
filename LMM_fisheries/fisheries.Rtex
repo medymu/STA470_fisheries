@@ -1,0 +1,175 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Models for Fisheries Catch Data %%
+%%           knitr doc             %%
+%% Last Modified  10/06/22 by ESI. %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{fullpage}
+\usepackage{setspace}
+%\usepackage{comment} 
+\usepackage{rotating}
+\usepackage{color}
+%\usepackage{array}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{bm}
+\usepackage{filecontents}
+\newcommand{\rinline}[1]{Error w/ Knitr}
+\definecolor{red}{rgb}{1.0000000,0.0000000,0.0000000}
+\definecolor{orange}{rgb}{1.0000000,0.6470588,0.0000000}
+\definecolor{green}{rgb}{0.0000000,1.0000000,0.0000000}
+\definecolor{darkgreen}{rgb}{0.0000000,0.3921569,0.0000000}
+\definecolor{lightblue}{rgb}{0.6784314,0.8470588,0.9019608}
+\definecolor{blue}{rgb}{0.0000000,0.0000000,1.0000000}
+\definecolor{navy}{rgb}{0.0000000,0.0000000,0.5000000}
+\definecolor{purple}{rgb}{0.6274510,0.1254902,0.9411765}
+\definecolor{maroon}{rgb}{0.6901961,0.1882353,0.3764706}
+ 
+\title{Models for Fisheries Catch Data}
+%\author{Author1, Author2, Author3}
+\date{\today}
+\begin{document}
+%\SweaveOpts{concordance=TRUE}
+\maketitle
+
+\section{Input Data; Basic Data Processing}
+
+%% begin.rcode setup
+%  rm(list=ls()) ## Completely clear the workspace.
+%  opts_chunk$set(fig.path='./figs/',cache.path='./cache/')
+%  ##source("RFuncs.R")
+%  ##library(xtable)
+%% end.rcode
+
+%% begin.rcode import
+%  x<-read.csv("fullSetWithMask.csv",as.is=TRUE,
+%              na.strings=c("NA",".",""," "))
+%  dim(x)  ## Check the dimension (number of rows and columns) of the data matrix.
+%  head(x)
+%  ## Drop Column of Row Numbers:
+%  x<-x[,-1]
+%  ## Rename a Few Variables:
+%  colnames(x)[colnames(x)=="taxa_grouped_weight"]<-"taxa"
+%  colnames(x)[colnames(x)=="agremiacion_fed"]<-"fed"
+%  colnames(x)[colnames(x)=="coop_edad_10"]<-"age"
+%  colnames(x)[colnames(x)=="rr"]<-"region"
+%  x$uniqueid<-as.factor(x$uniqueid)
+%  x$fed<-as.factor(x$fed)
+%  x$taxa<-as.factor(x$taxa)
+%  x$region<-as.factor(x$region)
+%  x$yearFactor<-as.factor(x$year)
+%  x$monthFactor<-as.factor(x$month)
+%% end.rcode
+
+\section{Basic Summaries}
+
+%% begin.rcode
+%  table(x$taxa,useNA="always")
+%  table(x$region,useNA="always")
+%  length(unique(x$uniqueid))
+%  length(unique(x$fed))
+%  table(x$year)
+%  summary(x$age)
+%  summary(x$age[x$uniqueid=="00000-BCSCAM"])
+%  x$age2<-((10*x$age) + (x$year - 2016))
+%  summary(x$age2)
+%  table(x$age2<0)
+%  tbl<-table(as.character(x$uniqueid)[x$age2<0]); tbl
+%  table(x$age2[x$uniqueid %in% names(tbl)],
+%        as.character(x$uniqueid[x$uniqueid %in% names(tbl)]),
+%        useNA="always")
+%  ## Naive Age Fix (the years associated w/ these samples may be incorrect):
+%  x$age[(x$uniqueid=="00549-TAB")&(x$age2<0)]<-(x$age[(x$uniqueid=="00549-TAB")&(x$age2<0)] + 0.5)
+%  x$age[(x$uniqueid=="00685-BCS")&(x$age2<0)]<-(x$age[(x$uniqueid=="00685-BCS")&(x$age2<0)] + 0.2)
+%  x$age[(x$uniqueid=="00747-YUC")&(x$age2<0)]<-(x$age[(x$uniqueid=="00747-YUC")&(x$age2<0)] + 0.6)
+%  x$age[(x$uniqueid=="00748-YUC")&(x$age2<0)]<-(x$age[(x$uniqueid=="00748-YUC")&(x$age2<0)] + 0.2)
+%  x$age2<-((10*x$age) + (x$year - 2016))
+%  summary(x$age2)
+%% end.rcode
+
+\subsection{Taxa By Coop}
+
+%% begin.rcode, fig.width=6.5, fig.height=4.0
+%  tbl<-table(x$uniqueid,x$taxa)
+%  dim(tbl)
+%  summary(coopByTaxa<-as.numeric(tbl))
+%  table(coopByTaxa==0)
+%  coopByTaxa<-coopByTaxa[coopByTaxa>0]
+%  hist(coopByTaxa,nclass=50,las=1)
+%% end.rcode
+
+%% begin.rcode, fig.width=5.5, fig.height=3.0
+%
+%% end.rcode
+
+\newpage
+\section{Client's LME model}
+
+Note, from the {\texttt{nlme::ACF documentation}}: ``This method
+function calculates the empirical autocorrelation function for the
+within-group residuals from an lme fit. The autocorrelation values are
+calculated using pairs of residuals within the innermost group
+level. The autocorrelation function is useful for investigating serial
+correlation models for equally spaced data.''
+
+\subsection{Full Data Set}
+
+%% begin.rcode, fig.width=5.0, fig.height=3.75
+%  keep<-(!is.na(x$logcpue))
+%  lme.out<-nlme::lme(logcpue ~ age + yearFactor + monthFactor + region + taxa,
+%                     random = ~ 1|fed/uniqueid, data=x,subset=keep)
+%  summary(lme.out)$tTable
+%  acf.lme<-ACF(lme.out,maxLag=15)
+%  plot(acf.lme,alpha=0.01/15)
+%  acf.lme<-acf.lme[-1,]
+%  plot(acf.lme,alpha=0.005)
+%  qqnorm(fedn.re<-unlist(ranef(lme.out)$fed),las=1)
+%  abline(a=0,b=sd(fedn.re),lwd=2,col=2)
+%  qqnorm(uid.re<-unlist(ranef(lme.out)$uniqueid))
+%  abline(a=0,b=sd(uid.re),lwd=2,col=2)
+%% end.rcode
+
+\subsection{Single Taxa Model}
+
+%% begin.rcode, fig.width=5.0, fig.height=3.75
+%  keep<-((x$taxa=="OTRAS")&(!is.na(x$logcpue)))
+%  otras.out<-nlme::lme(logcpue ~ age + yearFactor + monthFactor + region,
+%                       random = ~ 1|fed/uniqueid, data=x,subset=keep)
+%  summary(otras.out)$tTable
+%  acf.otras<-ACF(otras.out,maxLag=15)
+%  plot(acf.otras,alpha=0.01/15)
+%  acf.otras<-acf.otras[-1,]
+%  plot(acf.otras,alpha=0.005)
+%  qqnorm(fedn.re<-unlist(ranef(otras.out)$fed),las=1)
+%  abline(a=0,b=sd(fedn.re),lwd=2,col=2)
+%  qqnorm(uid.re<-unlist(ranef(otras.out)$uniqueid))
+%  abline(a=0,b=sd(uid.re),lwd=2,col=2)
+%% end.rcode
+
+\section{Your mgcv Models}
+
+%% begin.rcode, fig.width=5.5, fig.height=3.0
+%
+%
+%% end.rcode
+
+
+\newpage
+\section{Wrap Up}
+
+%% begin.rcode
+%  gc(); save.image() ## Do garbage collection and save workspace.
+%% end.rcode
+
+\end{document}
+
+
+\begin{figure}[!hb]
+\begin{center}
+% trim = left bottom right top
+\includegraphics[width=6.5in,page=2, trim=1.0in 5.50in 1.0in 0.95in,
+  clip]{Tables13Oct21.pdf}
+\end{center}
+\end{figure}
+
