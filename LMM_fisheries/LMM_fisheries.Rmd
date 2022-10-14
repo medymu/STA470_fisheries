@@ -9,6 +9,16 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(broom.mixed)
+library(knitr)
+library(patchwork)
+library(nlme)
+```
+
 ## 1. Input Data; Basic Data Processing
 ```{r}
 x<-read.csv("fullSetWithMask.csv",as.is=TRUE,
@@ -129,3 +139,209 @@ abline(a=0,b=sd(uid.re),lwd=2,col=2)
 ```
 
 ## 4 Your mgcv Models
+
+```{r}
+response_summary <- x %>%
+    summarise(mean = mean(logcpue, na.rm=TRUE),
+            median = median(logcpue, na.rm=TRUE),
+            variance = var(logcpue, na.rm=TRUE),
+            IQR = IQR(logcpue, na.rm=TRUE),
+            sd = sd(logcpue, na.rm=TRUE),
+            min = min(logcpue, na.rm=TRUE),
+            max = max(logcpue, na.rm=TRUE))
+
+knitr::kable(response_summary, caption = "Summary Statistics for \n the logcpue")
+```
+
+```{r}
+ggplot(data = x, aes(x = logcpue)) +
+  geom_histogram(fill = "darkgreen", color = "black") +
+  labs(x = "logcpue", y = "Count",
+       title = "Distribution of logcpue",
+       caption = "Figure 1") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 9),
+        plot.title = element_text(size = 10),
+        plot.caption = element_text(size = 9)) +
+  theme(text = element_text(family = "serif")) +
+  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+```
+
+In this dataset, the response variable is `logcpue`, which represents catch per unit of effort, measured during different time points (Figure 1, Table 1). The distribution of this variable is unimodal and slightly skewed to the left. The center, defined by median, is 1.97. The spread, defined by the interquartile range (IQR), is 2.89. There are no evident outliers based on the histogram shown in Figure 1. To better capture the distribution of logcpue for individual organizations, a random sample of 30 organizations were selected, and their logcpue measured at different time points were plotted (Figure 2). Indeed, organizations exhibit different patterns for the distribution of logcpue. Some shows a bimodel distribution, while some shows a unimodel distribution, This suggests that the distribution of logcpue differs based on organizations, so we decided to include it as an individual level in our LMM model.
+
+```{r, fig.width = 10, fig.height = 6}
+set.seed(031622)
+
+# get sample of 30 organizations
+  
+sample_org <- x %>%
+  distinct(uniqueid) %>%
+  sample_n(30) %>% pull()
+
+# get data for those organizations
+sample_data <- x %>%
+  filter(uniqueid %in% sample_org)
+
+# make a histogram of the response for each lemur
+ggplot(data = sample_data, aes(x = logcpue)) +
+  geom_histogram(fill = "darkgreen", color = "black") +
+  facet_wrap(~ uniqueid, scales = "free") +
+  labs(x = "logcpue",
+       title = "Distribution of logcpue by randomly sampled 30 organizations",
+       caption = "Figure 2") +
+  theme(strip.text.x = element_text(size = 6),
+        axis.text.x = element_text(size= 5),
+        axis.text.y = element_text(size= 5),
+        plot.caption = element_text(size = 13),
+        axis.title = element_text(size = 13),
+        plot.title = element_text(size = 14)) +  
+  theme_bw() +
+  theme(text = element_text(family = "serif")) +
+  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+```
+
+Other variables in the data that are of interests include year and month of each fishing event, region, taxa, and age of the federations. Figure 3 shows the relationships between year and logcpue for 30 randomly selected organizations. Figure 4 shows the relationships between month and logcpue for 30 randomly selected organizations. While some organizations have a constant logcpue value across years or months, some organizations have varying logcpue based on the year or month the fishery takes place, indicating that time alone cannot explain the distribution of logcpue observed and other factors during the year or month logcpue was collected may play a role in determining the pattern of logcpue. 
+
+```{r, fig.width = 9, fig.height = 7}
+ggplot(data = sample_data, aes(x = yearFactor, y = logcpue)) +
+  geom_boxplot(fill = "darkgreen", color = "black") +
+  facet_wrap(~ uniqueid, scales = "free") +
+  labs(x = "Year",
+       y = "logcpue",
+       title = "logcpue vs year",
+       caption = "Figure 3") +
+  theme(strip.text.x = element_text(size = 6),
+        axis.text.x = element_text(size= 5),
+        axis.text.y = element_text(size= 5),
+        plot.caption = element_text(size = 13),
+        axis.title = element_text(size = 13),
+        plot.title = element_text(size = 14)) +  
+  theme_bw() +
+  theme(text = element_text(family = "serif")) +
+  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+```
+
+```{r, fig.width = 9, fig.height = 7}
+ggplot(data = sample_data, aes(x = monthFactor, y = logcpue)) +
+  geom_boxplot(fill = "darkgreen", color = "black") +
+  facet_wrap(~ uniqueid, scales = "free") +
+  labs(x = "Month",
+       y = "logcpue",
+       title = "logcpue vs month",
+       caption = "Figure 4") +
+  theme(strip.text.x = element_text(size = 6),
+        axis.text.x = element_text(size= 5),
+        axis.text.y = element_text(size= 5),
+        plot.caption = element_text(size = 13),
+        axis.title = element_text(size = 13),
+        plot.title = element_text(size = 14)) +  
+  theme_bw() +
+  theme(text = element_text(family = "serif")) +
+  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+```
+
+In addition to year and month, region and taxa also play an important role in explaining logcpue. In particular, logcpue differs based on the region where the fisheries take place and on the taxa of the fish caught (Figure 5,6). Therefore, these two variables are worth including in the final models.
+
+```{r}
+region <- ggplot(data = x, aes(x = region, y = logcpue)) +
+  geom_boxplot(fill = "darkgreen", color = "black") +
+  labs(x = "Region", 
+       y = "logcpue",
+       title = "logcpue vs. region",
+       caption = "Figure 5") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 9),
+        plot.title = element_text(size = 10),
+        plot.caption = element_text(size = 9)) +
+  theme(text = element_text(family = "serif")) +
+  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5))
+```
+
+```{r}
+taxa<- ggplot(data = x, aes(x = taxa, y = logcpue)) +
+  geom_boxplot(fill = "darkgreen", color = "black") +
+  labs(x = "Taxa",
+       y = "logcpue",
+       title = "logcpue vs. taxa",
+       caption = "Figure 6") +
+  theme_bw() +
+  theme(axis.title = element_text(size = 9),
+        plot.title = element_text(size = 10),
+        plot.caption = element_text(size = 9)) +
+  theme(text = element_text(family = "serif")) +
+  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5))
+```
+
+```{r}
+region + taxa
+```
+
+## Methods
+
+Since catch per unit of efforts (cpue) were measured at different time points for each organization and that organizations from the same federations tend to have similar distribution of logcpue, a multilevel model analysis was used to model the distribution of logcpue. The multilevel analysis was done at three levels. The first level included time points when cpue were collected; the second level included individual organizations (``uniqueid``); and the third level included federations (``fed``). To test whether a multilevel model is necessary to capture the distribution of logcpue, an unconditional means model in which there are no predictors at any level was first fitted, and intraclass correlation was calculated to estimate the relative variability between organizations and between federations (Table 2). Indeed, the intraclass correlation for organizations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and for federations is about `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)`, which means that the average correlation between any two responses from the same organization or from the same federations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` respectively. This suggests that about 48% of the variability in the logcpue is explained by organization to organization variability and federation to federation variability. Knowing organization and federation, therefore, can explain almost half of the variability in the data, providing evidence that the multilevel model structure is useful in this setting.
+
+```{r}
+unconditional_means <- lme(logcpue ~ 1, 
+                           random = ~ 1|fed/uniqueid, 
+                           data = x, na.action = na.omit)
+summary(unconditional_means)
+```
+
+Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (). The Pseudo $R^2$ estimating the change in within-orgnization variance between the unconditional means and the Model with Time is about 0.50. Therefore, understanding changes of time (i.e. number of days before death) accounts for 50% variability in lemurs' weights.
+
+```{r}
+keep <- sample_n(x, 10000)
+```
+
+```{r}
+model_time <- lmer(logcpue ~ yearFactor + monthFactor + (yearFactor + monthFactor|uniqueid) + (yearFactor + monthFactor|fed),
+                  data = keep, na.action = na.omit)
+tidy(model_time) %>%
+  kable(digits = 3, caption = "Model with Time")
+```
+
+```{r}
+unconditional_growth <- lmer(logcpue ~ yearFactor + monthFactor + region + taxa + (yearFactor + monthFactor + region + taxa|uniqueid) + (yearFactor + monthFactor + region + taxa|fed), 
+                            data = keep, na.action = na.omit)
+
+tidy(unconditional_growth) %>%
+  kable(digits = 3, caption = "Model with All Level One Predictors")
+```
+
+
+**Level 1 Model: Time**
+
+$$ Logcpue_{ijk} = a_{ij} + b_{ij} year_{ijk} + c_{ij} month_{ijk} + d_{ij} region_{ijk} + e_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+
+**Level 2 Model: Organizations**
+
+$$a_{ij} = a_i + u_{ij}$$
+
+$$b_{ij} = b_i + v_{ij} $$
+
+$$c_{ij} = c_i + w_{ij}$$
+
+$$d_{ij} = d_i + x_{ij}$$
+$$e_{ij} = e_i + y_{ij}$$
+
+**Level 3 Model: Federations**
+
+$$a_{i} = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i}$$
+
+$$b_{i} = \beta_0 + \beta_1 age_{i} $$
+
+$$c_{i} = \gamma_0 + \gamma_1 age_{i} $$
+
+$$d_{i} = \delta_0 $$
+
+$$e_{i} = \zeta_0 + \zeta_1 age_{i} $$
+
+**Composite model**
+
+$$ Logcpue_{ijk} = a_i + u_{ij} + b_i year_{ijk} + v_{ij} year_{ijk} +  c_i month_{ijk}+ w_{ij} month_{ijk} $$
+$$+ d_i region_{ijk} + x_{ij} region_{ijk} + e_i taxa_{ijk} + y_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+
+
+$$ Logcpue_{ijk} = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i} + u_{ij} + \beta_0 year_{ijk} + \beta_1 age_{i}year_{ijk} $$
+$$+ v_{ij} year_{ijk} +  \gamma_0 month_{ijk} + \gamma_1 age_{i}month_{ijk} + w_{ij} month_{ijk} $$
+$$+ \delta_0 region_{ijk} + x_{ij} region_{ijk} + \zeta_0 taxa_{ijk}+ \zeta_1 age_{i}taxa_{ijk} + y_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
