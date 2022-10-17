@@ -280,38 +280,50 @@ region + taxa
 
 Since catch per unit of efforts (cpue) were measured at different time points for each organization and that organizations from the same federations tend to have similar distribution of logcpue, a multilevel model analysis was used to model the distribution of logcpue. The multilevel analysis was done at three levels. The first level included time points when cpue were collected; the second level included individual organizations (``uniqueid``); and the third level included federations (``fed``). To test whether a multilevel model is necessary to capture the distribution of logcpue, an unconditional means model in which there are no predictors at any level was first fitted, and intraclass correlation was calculated to estimate the relative variability between organizations and between federations (Table 2). Indeed, the intraclass correlation for organizations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and for federations is about `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)`, which means that the average correlation between any two responses from the same organization or from the same federations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` respectively. This suggests that about 48% of the variability in the logcpue is explained by organization to organization variability and federation to federation variability. Knowing organization and federation, therefore, can explain almost half of the variability in the data, providing evidence that the multilevel model structure is useful in this setting.
 
-```{r}
+```{r, cache=TRUE}
 unconditional_means <- lme(logcpue ~ 1, 
                            random = ~ 1|fed/uniqueid, 
                            data = x, na.action = na.omit)
 summary(unconditional_means)
 ```
 
-Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (). The Pseudo $R^2$ estimating the change in within-orgnization variance between the unconditional means and the Model with Time is about 0.50. Therefore, understanding changes of time (i.e. number of days before death) accounts for 50% variability in lemurs' weights.
+Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (Table 3). The Pseudo $R^2$ estimating the change in within-orgnization variance between the unconditional means and the Model with Time is about 0.12. Therefore, understanding changes of time (i.e. years) accounts for 12% variability in logcpue.
 
-```{r}
-keep <- sample_n(x, 10000)
-```
-
-```{r}
-model_time <- lmer(logcpue ~ yearFactor + monthFactor + (yearFactor + monthFactor|uniqueid) + (yearFactor + monthFactor|fed),
-                  data = keep, na.action = na.omit)
+```{r, cache=TRUE}
+model_time <- lmer(logcpue ~ yearMonth +  (yearMonth|uniqueid) + (yearMonth|fed),
+                  data = x, na.action = na.omit)
 tidy(model_time) %>%
   kable(digits = 3, caption = "Model with Time")
 ```
 
 ```{r}
-unconditional_growth <- lmer(logcpue ~ yearFactor + monthFactor + region + taxa + (yearFactor + monthFactor + region + taxa|uniqueid) + (yearFactor + monthFactor + region + taxa|fed), 
-                            data = keep, na.action = na.omit)
-
-tidy(unconditional_growth) %>%
-  kable(digits = 3, caption = "Model with All Level One Predictors")
+# Pseudo R^2
+sigm_moda <- 1.687456^2
+sigm_madb <- 1.585^2
+r <- (sigm_moda - sigm_madb)/sigm_moda
+r
 ```
 
+The final model we come up with removes variance terms associated with level Three slopes since adding them makes the model too complex. Age was only included in level Three intercept since we hypothesized that the interaction between the age of federation with our level One predictors of interests are not strong.
+
+```{r, cache=TRUE}
+final_model <- lmer(logcpue ~ yearMonth + region + taxa + age 
+                    + (yearMonth + region + taxa|uniqueid) + (1|fed), 
+                            data = x, na.action = na.omit)
+
+tidy(final_model) %>%
+  kable(digits = 3, caption = "Final Model")
+```
+
+```{r, cache=TRUE}
+glance(final_model) %>% 
+  select(AIC, BIC) %>%
+  kable(digits = 0, caption = "AIC and BIC for Final Model")
+```
 
 **Level 1 Model: Time**
 
-$$ Logcpue_{ijk} = a_{ij} + b_{ij} year_{ijk} + c_{ij} month_{ijk} + d_{ij} region_{ijk} + e_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ Logcpue_{ijk} = a_{ij} + b_{ij} yearmonth_{ijk} + c_{ij} region_{ijk} + d_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
 
 **Level 2 Model: Organizations**
 
@@ -322,26 +334,43 @@ $$b_{ij} = b_i + v_{ij} $$
 $$c_{ij} = c_i + w_{ij}$$
 
 $$d_{ij} = d_i + x_{ij}$$
-$$e_{ij} = e_i + y_{ij}$$
 
 **Level 3 Model: Federations**
 
 $$a_{i} = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i}$$
 
-$$b_{i} = \beta_0 + \beta_1 age_{i} $$
+$$b_{i} = \beta_0 $$
 
-$$c_{i} = \gamma_0 + \gamma_1 age_{i} $$
+$$c_{i} = \gamma_0 $$
 
 $$d_{i} = \delta_0 $$
 
-$$e_{i} = \zeta_0 + \zeta_1 age_{i} $$
 
 **Composite model**
 
-$$ Logcpue_{ijk} = a_i + u_{ij} + b_i year_{ijk} + v_{ij} year_{ijk} +  c_i month_{ijk}+ w_{ij} month_{ijk} $$
-$$+ d_i region_{ijk} + x_{ij} region_{ijk} + e_i taxa_{ijk} + y_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ Logcpue_{ijk} = a_i + u_{ij} + b_i yearmonth_{ijk} + v_{ij} yearmonth_{ijk} + c_i region_{ijk} + w_{ij} region_{ijk} $$
+$$+ d_i taxa_{ijk} + x_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
 
 
-$$ Logcpue_{ijk} = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i} + u_{ij} + \beta_0 year_{ijk} + \beta_1 age_{i}year_{ijk} $$
-$$+ v_{ij} year_{ijk} +  \gamma_0 month_{ijk} + \gamma_1 age_{i}month_{ijk} + w_{ij} month_{ijk} $$
-$$+ \delta_0 region_{ijk} + x_{ij} region_{ijk} + \zeta_0 taxa_{ijk}+ \zeta_1 age_{i}taxa_{ijk} + y_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i} + u_{ij} + \beta_0 yearmonth_{ijk} + v_{ij} yearmonth_{ijk} $$
+$$+ \gamma_0 region_{ijk} + w_{ij} region_{ijk} + \delta_0 taxa_{ijk}+ x_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ = \alpha_0 + \alpha_1 age_{i} + \beta_0 yearmonth_{ijk} + \gamma_0 region_{ijk} + \delta taxa_{ijk} $$
+$$+ [u_{ij} + v_{ij} yearmonth_{ijk} + w_{ij} region_{ijk} +  x_{ij} taxa_{ijk} + \tilde u_{i} + \epsilon_{ijk}] $$
+$$\epsilon_{ijk} \sim N(0, \sigma^2)$$
+
+```{r, cache=TRUE}
+anova(final_model)
+par(mfrow=c(2,2),las=1)
+plot(final_model,scale=0)
+```
+
+```{r, cache=TRUE}
+x <- x %>% 
+   mutate(pred_logcpue = predict(final_model, x, re.form = NULL))
+```
+
+```{r}
+x[1:10,]
+```
+
+
