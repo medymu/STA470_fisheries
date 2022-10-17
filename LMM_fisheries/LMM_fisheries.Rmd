@@ -149,7 +149,6 @@ response_summary <- x %>%
             sd = sd(logcpue, na.rm=TRUE),
             min = min(logcpue, na.rm=TRUE),
             max = max(logcpue, na.rm=TRUE))
-
 knitr::kable(response_summary, caption = "Summary Statistics for \n the logcpue")
 ```
 
@@ -171,17 +170,14 @@ In this dataset, the response variable is `logcpue`, which represents catch per 
 
 ```{r, fig.width = 10, fig.height = 6}
 set.seed(031622)
-
-# get sample of 30 organizations
+# get sample of 30 cooperations
   
 sample_org <- x %>%
   distinct(uniqueid) %>%
   sample_n(30) %>% pull()
-
 # get data for those organizations
 sample_data <- x %>%
   filter(uniqueid %in% sample_org)
-
 # make a histogram of the response for each lemur
 ggplot(data = sample_data, aes(x = logcpue)) +
   geom_histogram(fill = "darkgreen", color = "black") +
@@ -240,36 +236,36 @@ ggplot(data = sample_data, aes(x = monthFactor, y = logcpue)) +
   theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
 ```
 
+Therefore, a new continuous variable that incorporated both year and month is created. 
+
+```{r}
+x$yearMonth <- ((x$year - min(x$year)) *12 + x$month)
+```
+
 In addition to year and month, region and taxa also play an important role in explaining logcpue. In particular, logcpue differs based on the region where the fisheries take place and on the taxa of the fish caught (Figure 5,6). Therefore, these two variables are worth including in the final models.
 
 ```{r}
-region <- ggplot(data = x, aes(x = region, y = logcpue)) +
+x_na <- na.omit(x)
+```
+
+```{r}
+region <- ggplot(data = x_na, aes(x = region, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Region", 
        y = "logcpue",
        title = "logcpue vs. region",
        caption = "Figure 5") +
-  theme_bw() +
-  theme(axis.title = element_text(size = 9),
-        plot.title = element_text(size = 10),
-        plot.caption = element_text(size = 9)) +
-  theme(text = element_text(family = "serif")) +
-  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5))
+  theme_bw() 
 ```
 
 ```{r}
-taxa<- ggplot(data = x, aes(x = taxa, y = logcpue)) +
+taxa<- ggplot(data = x_na, aes(x = taxa, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Taxa",
        y = "logcpue",
        title = "logcpue vs. taxa",
        caption = "Figure 6") +
-  theme_bw() +
-  theme(axis.title = element_text(size = 9),
-        plot.title = element_text(size = 10),
-        plot.caption = element_text(size = 9)) +
-  theme(text = element_text(family = "serif")) +
-  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5))
+  theme_bw() 
 ```
 
 ```{r}
@@ -282,58 +278,55 @@ Since catch per unit of efforts (cpue) were measured at different time points fo
 
 ```{r, cache=TRUE}
 unconditional_means <- lme(logcpue ~ 1, 
-                           random = ~ 1|fed/uniqueid, 
+                          list(fed = ~1, uniqueid = ~1), 
                            data = x, na.action = na.omit)
 summary(unconditional_means)
 ```
 
-Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (Table 3). The Pseudo $R^2$ estimating the change in within-orgnization variance between the unconditional means and the Model with Time is about 0.12. Therefore, understanding changes of time (i.e. years) accounts for 12% variability in logcpue.
+Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (Table 3). The Pseudo $R^2$ estimating the change in within-organization variance between the unconditional means and the Model with Time is about 0.42. Therefore, understanding changes of time (i.e. years) accounts for 42% variability in logcpue.
 
 ```{r, cache=TRUE}
-model_time <- lmer(logcpue ~ yearMonth +  (yearMonth|uniqueid) + (yearMonth|fed),
-                  data = x, na.action = na.omit)
-tidy(model_time) %>%
-  kable(digits = 3, caption = "Model with Time")
+model_time <- lme(logcpue ~ yearMonth, list(fed = ~yearMonth, uniqueid = ~yearMonth), data = x, na.action = na.omit)
+summary(model_time)
 ```
 
 ```{r}
 # Pseudo R^2
 sigm_moda <- 1.687456^2
-sigm_madb <- 1.585^2
+sigm_madb <- 1.64283974 
 r <- (sigm_moda - sigm_madb)/sigm_moda
 r
 ```
 
-The final model we come up with removes variance terms associated with level Three slopes since adding them makes the model too complex. Age was only included in level Three intercept since we hypothesized that the interaction between the age of federation with our level One predictors of interests are not strong.
+Based on the EDA and model with only time as level one predictors, we decided to include `yearMonth`, `region`, and `taxa` as our level one predictors. `age2` was included as level three (federation) predictor since we hypothesized that the age of federation would impact the efficiency of catching fish (logcpue) of its subsidiary cooperation. Therefore, two models were fitted. One that includes interactions between age of federations and region and between age of federations and taxa, and one that does not include any interactions. AIC and BIC of both models were compared. Since both AIC and BIT are lower for model with additional interaction effects, providing evidence that model with interactions is a better model, which is our final model. One thing to note is that no random slopes were included in level two or three in both model because adding them make the model too complex and too computational heavy.
 
 ```{r, cache=TRUE}
-final_model <- lmer(logcpue ~ yearMonth + region + taxa + age 
-                    + (yearMonth + region + taxa|uniqueid) + (1|fed), 
+model_no_int <- lme(logcpue ~ yearMonth + region + taxa + age2, 
+                     list(fed = ~1, uniqueid = ~1), 
                             data = x, na.action = na.omit)
-
-tidy(final_model) %>%
-  kable(digits = 3, caption = "Final Model")
+summary(model_no_int)
 ```
 
 ```{r, cache=TRUE}
-glance(final_model) %>% 
-  select(AIC, BIC) %>%
-  kable(digits = 0, caption = "AIC and BIC for Final Model")
+model_int <- lme(logcpue ~ yearMonth + region + taxa + age2 + age2:region + age2:taxa, 
+                     list(fed = ~1, uniqueid = ~1), 
+                            data = x, na.action = na.omit)
+summary(model_int)
 ```
 
 **Level 1 Model: Time**
 
-$$ Logcpue_{ijk} = a_{ij} + b_{ij} yearmonth_{ijk} + c_{ij} region_{ijk} + d_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ Logcpue_{ijk} = a_{ij} + b_{ij} yearMonth_{ijk} + c_{ij} region_{ijk} + d_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
 
 **Level 2 Model: Organizations**
 
 $$a_{ij} = a_i + u_{ij}$$
 
-$$b_{ij} = b_i + v_{ij} $$
+$$b_{ij} = b_i $$
 
-$$c_{ij} = c_i + w_{ij}$$
+$$c_{ij} = c_i$$
 
-$$d_{ij} = d_i + x_{ij}$$
+$$d_{ij} = d_i$$
 
 **Level 3 Model: Federations**
 
@@ -341,36 +334,45 @@ $$a_{i} = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i}$$
 
 $$b_{i} = \beta_0 $$
 
-$$c_{i} = \gamma_0 $$
+$$c_{i} = \gamma_0  + \gamma_1 age_{i}$$
 
-$$d_{i} = \delta_0 $$
+$$d_{i} = \delta_0 + \delta_1 age_{i} $$
 
 
 **Composite model**
 
-$$ Logcpue_{ijk} = a_i + u_{ij} + b_i yearmonth_{ijk} + v_{ij} yearmonth_{ijk} + c_i region_{ijk} + w_{ij} region_{ijk} $$
-$$+ d_i taxa_{ijk} + x_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ Logcpue_{ijk} = a_i + u_{ij} + b_i yearMonth_{ijk} + c_i region_{ijk} + d_i taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
 
 
-$$ = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i} + u_{ij} + \beta_0 yearmonth_{ijk} + v_{ij} yearmonth_{ijk} $$
-$$+ \gamma_0 region_{ijk} + w_{ij} region_{ijk} + \delta_0 taxa_{ijk}+ x_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
-$$ = \alpha_0 + \alpha_1 age_{i} + \beta_0 yearmonth_{ijk} + \gamma_0 region_{ijk} + \delta taxa_{ijk} $$
-$$+ [u_{ij} + v_{ij} yearmonth_{ijk} + w_{ij} region_{ijk} +  x_{ij} taxa_{ijk} + \tilde u_{i} + \epsilon_{ijk}] $$
-$$\epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ = \alpha_0 + \alpha_1 age_{i} + \tilde u_{i} + u_{ij} + \beta_0 yearMonth_{ijk} + \gamma_0 region_{ijk} + \gamma_1 age_{i} region_{ijk} + \delta_0 taxa_{ijk}+ \delta_1 age_{i} taxa_{ijk} + \epsilon_{ijk}$$
+$$\space \epsilon_{ijk} \sim N(0, \sigma^2)$$
+$$ = \alpha_0 + \alpha_1 age_{i} + \beta_0 yearMonth_{ijk} + \gamma_0 region_{ijk} + \gamma_1 age_{i} region_{ijk} + \delta_0 taxa_{ijk} + \delta_1 age_{i} taxa_{ijk}$$
+$$+ [\tilde u_{i} + u_{ij} + \epsilon_{ijk}] $$
+$$\epsilon_{ijk} \sim N(0, \sigma^2),u_{ij} \sim N(0, \sigma_{u}^2), \tilde u_{i} \sim N(0, \sigma_{\tilde u}^2)$$
 
-```{r, cache=TRUE}
-anova(final_model)
-par(mfrow=c(2,2),las=1)
-plot(final_model,scale=0)
-```
+## Model Diagnostics
 
-```{r, cache=TRUE}
-x <- x %>% 
-   mutate(pred_logcpue = predict(final_model, x, re.form = NULL))
-```
+### linearity 
 
 ```{r}
-x[1:10,]
+ggplot(data.frame(yearMonth=x_na$yearMonth,pearson=residuals(model_int,type="pearson")),
+      aes(x=yearMonth,y=pearson)) +
+    geom_point() +
+    theme_bw()
+```
+
+The residuals are randomly scattered, suggesting that there is linear relationship for yearMonth.
+
+## Normality
+
+```{r}
+qqnorm(residuals(model_int))
+```
+
+## Residual plot
+
+```{r}
+plot(model_int)
 ```
 
 
