@@ -187,7 +187,7 @@ ggplot(data = sample_data, aes(x = logcpue)) +
   theme_bw() 
 ```
 
-Other variables in the data that are of interests include year and month of each fishing event, region, taxa, and age of the federations. Figure 3 shows the relationships between year and logcpue for 30 randomly selected cooperations. Figure 4 shows the relationships between month and logcpue for 30 randomly selected cooperations. While some cooperations have a constant logcpue value across years or months, some cooperations have varying logcpue based on the year or month the fishery takes place, indicating that time alone cannot explain the distribution of logcpue observed and other factors during the year or month logcpue was collected may play a role in determining the pattern of logcpue. 
+Other variables in the data that are of interests include year and month of each fishing event, region, taxa, and age of the federations. Figure 3 shows the relationships between year and logcpue for 30 randomly selected cooperations. Figure 4 shows the relationships between month and logcpue for 30 randomly selected cooperations. While some cooperations have a constant logcpue value across years or months, some cooperations have varying logcpue based on the year or month the fishery takes place, indicating that the effects of year or month on logcpue varies based on cooperations. 
 
 ```{r, fig.width = 9, fig.height = 7}
 ggplot(data = sample_data, aes(x = yearFactor, y = logcpue)) +
@@ -211,7 +211,7 @@ ggplot(data = sample_data, aes(x = monthFactor, y = logcpue)) +
   theme_bw() 
 ```
 
-Therefore, a new continuous variable that incorporated both year and month is created. 
+For simplicity purposes, we decided to combine year and month to make a new continuous variable that incorporated both year and month. 
 
 ```{r}
 x$yearMonth <- ((x$year - min(x$year)) *12 + x$month)
@@ -219,9 +219,8 @@ x$yearMonth <- ((x$year - min(x$year)) *12 + x$month)
 
 In addition to year and month, region and taxa also play an important role in explaining logcpue. In particular, logcpue differs based on the region where the fisheries take place and on the taxa of the fish caught (Figure 5,6). Therefore, these two variables are worth including in the final models.
 
-
 ```{r}
-region <- ggplot(data = x, aes(x = region, y = logcpue)) +
+ggplot(data = x, aes(x = region, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Region", 
        y = "logcpue",
@@ -231,7 +230,7 @@ region <- ggplot(data = x, aes(x = region, y = logcpue)) +
 ```
 
 ```{r}
-taxa<- ggplot(data = x, aes(x = taxa, y = logcpue)) +
+ggplot(data = x, aes(x = taxa, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Taxa",
        y = "logcpue",
@@ -240,15 +239,11 @@ taxa<- ggplot(data = x, aes(x = taxa, y = logcpue)) +
   theme_bw() 
 ```
 
-```{r}
-region + taxa
-```
-
 ## Methods
 
 Both models using mgcv and lme are included in this section.
 
-Since catch per unit of efforts (cpue) were measured at different time points for each cooperation and that cooperations from the same federations tend to have similar distribution of logcpue, a multilevel model analysis was used to model the distribution of logcpue. The multilevel analysis was done at three levels. The first level included time points when cpue were collected; the second level included individual cooperations (``uniqueid``); and the third level included federations (``fed``). To test whether a multilevel model is necessary to capture the distribution of logcpue, an unconditional means model in which there are no predictors at any level was first fitted, and intraclass correlation was calculated to estimate the relative variability between cooperations and between federations (Table 2). Indeed, the intraclass correlation for cooperations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and for federations is about `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)`, which means that the average correlation between any two responses from the same cooperations or from the same federations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` respectively. This suggests that about 48% of the variability in the logcpue is explained by cooperation to cooperation variability and federation to federation variability. Knowing cooperation and federation, therefore, can explain almost half of the variability in the data, providing evidence that the multilevel model structure is useful in this setting.
+Since catch per unit of efforts (cpue) were measured at different time points for each cooperation and that cooperations from the same federations tend to have similar distribution of logcpue, a multilevel model analysis was used to model the distribution of logcpue. The multilevel analysis was done at three levels. The first level included time points when cpue were collected; the second level included individual cooperations (``uniqueid``); and the third level included federations (``fed``). To test whether a multilevel model is necessary to capture the distribution of logcpue, an unconditional means model in which there are no predictors at any level was first fitted, and intraclass correlation was calculated to estimate the relative variability between cooperations and between federations. Indeed, the intraclass correlation for cooperations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and for federations is about `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)`, which means that the average correlation between any two responses from the same cooperations or from the same federations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` respectively. This suggests that about 48% of the variability in the logcpue is explained by cooperation to cooperation variability and federation to federation variability. Knowing cooperation and federation, therefore, can explain almost half of the variability in the data, providing evidence that the multilevel model structure is useful in this setting.
 
 ```{r, cache=TRUE}
 unconditional_means_mgcv <- bam(logcpue ~ 1 + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
@@ -263,15 +258,13 @@ unconditional_means <- lme(logcpue ~ 1,
 summary(unconditional_means)
 ```
 
-Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (Table 3). The Pseudo $R^2$ estimating the change in within-cooperation variance between the unconditional means and the Model with Time is about 0.42. Therefore, understanding changes of time (i.e. years) accounts for 42% variability in logcpue.
+Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted. The Pseudo $R^2$ estimating the change in within-cooperation variance between the unconditional means and the Model with Time is about 0.42. Therefore, understanding changes of time (i.e. years) accounts for 42% variability in logcpue.
 
 ```{r, cache=TRUE}
-model_time <- lme(logcpue ~ yearMonth, list(fed = ~yearMonth, uniqueid = ~yearMonth), 
+model_time <- lme(logcpue ~ yearMonth, random = list(fed = ~yearMonth + 1, uniqueid = ~yearMonth + 1), 
                   data = x, na.action = na.omit)
 summary(model_time)
 ```
-
-mgcv,however, cannot fit this model, which is one limitation of mgcv. We cannot encode a covariance term between two random effect in mgcv. It can only fit uncorrelated random effects. 
 
 ```{r}
 # Pseudo R^2
@@ -283,33 +276,41 @@ r
 
 Based on the EDA and model with only time as level one predictors, we decided to include `yearMonth`, `region`, and `taxa` as our level one predictors. `age2` was included as level three (federation) predictor since we hypothesized that the age of federation would impact the efficiency of catching fish (logcpue) of its subsidiary cooperation. Therefore, two models were fitted. One that includes interactions between age of federations and region and between age of federations and taxa, and one that does not include any interactions. AIC and BIC of both models were compared. Since both AIC and BIC are lower for model with additional interaction effects, providing evidence that model with interactions is a better model. One thing to note is that no random slopes were included in level two or three in both model because adding them make the model too complex and too computational heavy.
 
-```{r}
+The interaction between age2 and yearMonth was not considered because we believe that the age of federation does not impact the effects of year and month of fishing on logcpue.
+
+```{r, cache=TRUE}
 model_no_int_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2 
                          + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
-           data = x, na.action = na.omit)
-summary(model_no_int_mgcv)
+                         data = x, na.action = na.omit)
 ```
 
 ```{r, cache=TRUE}
-model_no_int <- lme(logcpue ~ yearMonth + region + taxa + age2, 
-                     list(fed = ~1, uniqueid = ~1), 
-                            data = x, na.action = na.omit)
-summary(model_no_int)
+model_no_int <- lme(logcpue ~ yearMonth + region + taxa + age2,
+                    list(fed = ~1, uniqueid = ~1), 
+                    data = x, na.action = na.omit)
 ```
 
-```{r}
+```{r, cache=TRUE}
 model_int_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2 
                          + age2:region + age2:taxa +
                          + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
            data = x, na.action = na.omit)
-summary(model_int_mgcv)
 ```
 
 ```{r, cache=TRUE}
-model_int <- lme(logcpue ~ yearMonth + region + taxa + age2 + age2:region + age2:taxa, 
-                     list(fed = ~1, uniqueid = ~1), 
-                            data = x, na.action = na.omit)
-summary(model_int)
+model_int <- lme(logcpue ~ yearMonth + region + taxa + age2 
+                 + age2:region + age2:taxa, 
+                 list(fed = ~1, uniqueid = ~1), 
+                 data = x, na.action = na.omit)
+```
+
+```{r}
+glance(model_int_mgcv) %>% 
+  select(AIC, BIC) %>%
+  kable(digits = 0, caption = "AIC and BIC for Model without Interaction")
+glance(model_no_int_mgcv) %>% 
+  select(AIC, BIC) %>%
+  kable(digits = 0, caption = "AIC and BIC for Model with Interactions")
 ```
 
 Moreover, we have also tried adding different interactions in the model, such as interactions effects betwen yearMonth and region and between yearMonth and taxa as shown below. However, the model selection criterion by AIC and BIC is higher that than that for the previous model. Therefore, model with interactions between age2 and region and between age2 and taxa is our final model.
@@ -319,14 +320,18 @@ model_int2_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2
                          + yearMonth:region + yearMonth:taxa +
                          + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
            data = x, na.action = na.omit)
-summary(model_int2_mgcv)
 ```
 
 ```{r}
 model_int2<- lme(logcpue ~ yearMonth + region + taxa + age2 + yearMonth:region + yearMonth:taxa, 
                      list(fed = ~1, uniqueid = ~1), 
                             data = x, na.action = na.omit)
-summary(model_int2)
+```
+
+```{r}
+glance(model_int2_mgcv) %>% 
+  select(AIC, BIC) %>%
+  kable(digits = 0, caption = "AIC and BIC for Model with New Interactions")
 ```
 
 
@@ -387,12 +392,33 @@ ggplot(data.frame(yearMonth=x_na$yearMonth,pearson=residuals(model_int_mgcv,type
     theme_bw()
 ```
 
-The residuals are randomly scattered, indicating that the data is linear and that there is a linear relationship between yearMonth and response.
+```{r}
+ggplot(data.frame(age2=x_na$age2,pearson=residuals(model_int_mgcv,type="pearson")),
+      aes(x=age2,y=pearson)) +
+    geom_point() +
+    theme_bw()
+```
+
+```{r}
+ggplot(data.frame(region=x_na$region,pearson=residuals(model_int_mgcv,type="pearson")),
+      aes(x=region,y=pearson)) +
+    geom_point() +
+    theme_bw()
+```
+
+```{r}
+ggplot(data.frame(taxa=x_na$taxa,pearson=residuals(model_int_mgcv,type="pearson")),
+      aes(x=taxa,y=pearson)) +
+    geom_point() +
+    theme_bw()
+```
+
+The residuals are randomly scattered, indicating that the data is linear and that there is a linear relationship between our predictors and the response.
 
 ## Normality
 
 ```{r}
-qqnorm(residuals(model_int))
+qqnorm(residuals(model_int_mgcv))
 ```
 
 Points mostly fall along a straight diagonal line on the normal quantile plot, so we can safely assume that the data is normally distributed.
@@ -400,7 +426,12 @@ Points mostly fall along a straight diagonal line on the normal quantile plot, s
 ## Constant Variance
 
 ```{r}
-plot(model_int)
+res <- resid(model_int_mgcv)
+plot(fitted(model_int_mgcv), res)
+```
+
+```{r}
+hist(model_int_mgcv$residuals)
 ```
 
 The vertical spread of the residuals is not constant across the residual plot, suggesting that the constant variance condition is violated for linear mixed effects model. Therefore, some transformation should be done in the future to address this problem.
@@ -429,3 +460,5 @@ df <- cbind(index = rownames(df),df)
 df$index <- as.numeric(as.character(df$index))
 write.csv(df,'predictions.csv',row.names = FALSE) # format: index,prediction
 ```
+
+
