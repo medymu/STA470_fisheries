@@ -1,0 +1,12 @@
+base
+dplyr
+ggplot2
+Matrix
+lme4
+broom.mixed
+knitr
+patchwork
+nlme
+mgcv
+carData
+car

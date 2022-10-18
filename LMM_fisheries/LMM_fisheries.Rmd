@@ -17,6 +17,8 @@ library(broom.mixed)
 library(knitr)
 library(patchwork)
 library(nlme)
+library(mgcv)
+library(car)
 ```
 
 ## 1. Input Data; Basic Data Processing
@@ -138,7 +140,9 @@ qqnorm(uid.re<-unlist(nlme::ranef(otras.out)$uniqueid))
 abline(a=0,b=sd(uid.re),lwd=2,col=2)
 ```
 
-## 4 Your mgcv Models
+## 4. Your mgcv Models
+
+### EDA
 
 ```{r}
 response_summary <- x %>%
@@ -158,15 +162,10 @@ ggplot(data = x, aes(x = logcpue)) +
   labs(x = "logcpue", y = "Count",
        title = "Distribution of logcpue",
        caption = "Figure 1") +
-  theme_bw() +
-  theme(axis.title = element_text(size = 9),
-        plot.title = element_text(size = 10),
-        plot.caption = element_text(size = 9)) +
-  theme(text = element_text(family = "serif")) +
-  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+  theme_bw() 
 ```
 
-In this dataset, the response variable is `logcpue`, which represents catch per unit of effort, measured during different time points (Figure 1, Table 1). The distribution of this variable is unimodal and slightly skewed to the left. The center, defined by median, is 1.97. The spread, defined by the interquartile range (IQR), is 2.89. There are no evident outliers based on the histogram shown in Figure 1. To better capture the distribution of logcpue for individual organizations, a random sample of 30 organizations were selected, and their logcpue measured at different time points were plotted (Figure 2). Indeed, organizations exhibit different patterns for the distribution of logcpue. Some shows a bimodel distribution, while some shows a unimodel distribution, This suggests that the distribution of logcpue differs based on organizations, so we decided to include it as an individual level in our LMM model.
+In this dataset, the response variable is `logcpue`, which represents catch per unit of effort, measured during different time points (Figure 1, Table 1). The distribution of this variable is unimodal and slightly skewed to the left. The center, defined by median, is 1.97. The spread, defined by the interquartile range (IQR), is 2.89. There are no evident outliers based on the histogram shown in Figure 1. To better capture the distribution of logcpue for individual cooperation, a random sample of 30 cooperation were selected, and their logcpue measured at different time points were plotted (Figure 2). Indeed, cooperation exhibit different patterns for the distribution of logcpue. Some shows a bimodel distribution, while some shows a unimodel distribution, This suggests that the distribution of logcpue differs based on cooperations, so we decided to include it as an individual level in our LMM model.
 
 ```{r, fig.width = 10, fig.height = 6}
 set.seed(031622)
@@ -175,7 +174,7 @@ set.seed(031622)
 sample_org <- x %>%
   distinct(uniqueid) %>%
   sample_n(30) %>% pull()
-# get data for those organizations
+# get data for those cooperation
 sample_data <- x %>%
   filter(uniqueid %in% sample_org)
 # make a histogram of the response for each lemur
@@ -183,20 +182,12 @@ ggplot(data = sample_data, aes(x = logcpue)) +
   geom_histogram(fill = "darkgreen", color = "black") +
   facet_wrap(~ uniqueid, scales = "free") +
   labs(x = "logcpue",
-       title = "Distribution of logcpue by randomly sampled 30 organizations",
+       title = "Distribution of logcpue by randomly sampled 30 cooperation",
        caption = "Figure 2") +
-  theme(strip.text.x = element_text(size = 6),
-        axis.text.x = element_text(size= 5),
-        axis.text.y = element_text(size= 5),
-        plot.caption = element_text(size = 13),
-        axis.title = element_text(size = 13),
-        plot.title = element_text(size = 14)) +  
-  theme_bw() +
-  theme(text = element_text(family = "serif")) +
-  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+  theme_bw() 
 ```
 
-Other variables in the data that are of interests include year and month of each fishing event, region, taxa, and age of the federations. Figure 3 shows the relationships between year and logcpue for 30 randomly selected organizations. Figure 4 shows the relationships between month and logcpue for 30 randomly selected organizations. While some organizations have a constant logcpue value across years or months, some organizations have varying logcpue based on the year or month the fishery takes place, indicating that time alone cannot explain the distribution of logcpue observed and other factors during the year or month logcpue was collected may play a role in determining the pattern of logcpue. 
+Other variables in the data that are of interests include year and month of each fishing event, region, taxa, and age of the federations. Figure 3 shows the relationships between year and logcpue for 30 randomly selected cooperations. Figure 4 shows the relationships between month and logcpue for 30 randomly selected cooperations. While some cooperations have a constant logcpue value across years or months, some cooperations have varying logcpue based on the year or month the fishery takes place, indicating that time alone cannot explain the distribution of logcpue observed and other factors during the year or month logcpue was collected may play a role in determining the pattern of logcpue. 
 
 ```{r, fig.width = 9, fig.height = 7}
 ggplot(data = sample_data, aes(x = yearFactor, y = logcpue)) +
@@ -206,15 +197,7 @@ ggplot(data = sample_data, aes(x = yearFactor, y = logcpue)) +
        y = "logcpue",
        title = "logcpue vs year",
        caption = "Figure 3") +
-  theme(strip.text.x = element_text(size = 6),
-        axis.text.x = element_text(size= 5),
-        axis.text.y = element_text(size= 5),
-        plot.caption = element_text(size = 13),
-        axis.title = element_text(size = 13),
-        plot.title = element_text(size = 14)) +  
-  theme_bw() +
-  theme(text = element_text(family = "serif")) +
-  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+  theme_bw()
 ```
 
 ```{r, fig.width = 9, fig.height = 7}
@@ -225,15 +208,7 @@ ggplot(data = sample_data, aes(x = monthFactor, y = logcpue)) +
        y = "logcpue",
        title = "logcpue vs month",
        caption = "Figure 4") +
-  theme(strip.text.x = element_text(size = 6),
-        axis.text.x = element_text(size= 5),
-        axis.text.y = element_text(size= 5),
-        plot.caption = element_text(size = 13),
-        axis.title = element_text(size = 13),
-        plot.title = element_text(size = 14)) +  
-  theme_bw() +
-  theme(text = element_text(family = "serif")) +
-  theme(plot.title=element_text(family = "serif", face = "bold", hjust = 0.5)) 
+  theme_bw() 
 ```
 
 Therefore, a new continuous variable that incorporated both year and month is created. 
@@ -244,12 +219,9 @@ x$yearMonth <- ((x$year - min(x$year)) *12 + x$month)
 
 In addition to year and month, region and taxa also play an important role in explaining logcpue. In particular, logcpue differs based on the region where the fisheries take place and on the taxa of the fish caught (Figure 5,6). Therefore, these two variables are worth including in the final models.
 
-```{r}
-x_na <- na.omit(x)
-```
 
 ```{r}
-region <- ggplot(data = x_na, aes(x = region, y = logcpue)) +
+region <- ggplot(data = x, aes(x = region, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Region", 
        y = "logcpue",
@@ -259,7 +231,7 @@ region <- ggplot(data = x_na, aes(x = region, y = logcpue)) +
 ```
 
 ```{r}
-taxa<- ggplot(data = x_na, aes(x = taxa, y = logcpue)) +
+taxa<- ggplot(data = x, aes(x = taxa, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Taxa",
        y = "logcpue",
@@ -274,7 +246,15 @@ region + taxa
 
 ## Methods
 
-Since catch per unit of efforts (cpue) were measured at different time points for each organization and that organizations from the same federations tend to have similar distribution of logcpue, a multilevel model analysis was used to model the distribution of logcpue. The multilevel analysis was done at three levels. The first level included time points when cpue were collected; the second level included individual organizations (``uniqueid``); and the third level included federations (``fed``). To test whether a multilevel model is necessary to capture the distribution of logcpue, an unconditional means model in which there are no predictors at any level was first fitted, and intraclass correlation was calculated to estimate the relative variability between organizations and between federations (Table 2). Indeed, the intraclass correlation for organizations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and for federations is about `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)`, which means that the average correlation between any two responses from the same organization or from the same federations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` respectively. This suggests that about 48% of the variability in the logcpue is explained by organization to organization variability and federation to federation variability. Knowing organization and federation, therefore, can explain almost half of the variability in the data, providing evidence that the multilevel model structure is useful in this setting.
+Both models using mgcv and lme are included in this section.
+
+Since catch per unit of efforts (cpue) were measured at different time points for each cooperation and that cooperations from the same federations tend to have similar distribution of logcpue, a multilevel model analysis was used to model the distribution of logcpue. The multilevel analysis was done at three levels. The first level included time points when cpue were collected; the second level included individual cooperations (``uniqueid``); and the third level included federations (``fed``). To test whether a multilevel model is necessary to capture the distribution of logcpue, an unconditional means model in which there are no predictors at any level was first fitted, and intraclass correlation was calculated to estimate the relative variability between cooperations and between federations (Table 2). Indeed, the intraclass correlation for cooperations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and for federations is about `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)`, which means that the average correlation between any two responses from the same cooperations or from the same federations is about `r round(1.093864^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` and `r round(1.189196^2/ (1.093864^2 + 1.189196^2 + 1.687456^2), 2)` respectively. This suggests that about 48% of the variability in the logcpue is explained by cooperation to cooperation variability and federation to federation variability. Knowing cooperation and federation, therefore, can explain almost half of the variability in the data, providing evidence that the multilevel model structure is useful in this setting.
+
+```{r, cache=TRUE}
+unconditional_means_mgcv <- bam(logcpue ~ 1 + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
+           data = x, na.action = na.omit)
+summary(unconditional_means_mgcv)
+```
 
 ```{r, cache=TRUE}
 unconditional_means <- lme(logcpue ~ 1, 
@@ -283,12 +263,15 @@ unconditional_means <- lme(logcpue ~ 1,
 summary(unconditional_means)
 ```
 
-Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (Table 3). The Pseudo $R^2$ estimating the change in within-organization variance between the unconditional means and the Model with Time is about 0.42. Therefore, understanding changes of time (i.e. years) accounts for 42% variability in logcpue.
+Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted (Table 3). The Pseudo $R^2$ estimating the change in within-cooperation variance between the unconditional means and the Model with Time is about 0.42. Therefore, understanding changes of time (i.e. years) accounts for 42% variability in logcpue.
 
 ```{r, cache=TRUE}
-model_time <- lme(logcpue ~ yearMonth, list(fed = ~yearMonth, uniqueid = ~yearMonth), data = x, na.action = na.omit)
+model_time <- lme(logcpue ~ yearMonth, list(fed = ~yearMonth, uniqueid = ~yearMonth), 
+                  data = x, na.action = na.omit)
 summary(model_time)
 ```
+
+mgcv,however, cannot fit this model, which is one limitation of mgcv. We cannot encode a covariance term between two random effect in mgcv. It can only fit uncorrelated random effects. 
 
 ```{r}
 # Pseudo R^2
@@ -298,13 +281,28 @@ r <- (sigm_moda - sigm_madb)/sigm_moda
 r
 ```
 
-Based on the EDA and model with only time as level one predictors, we decided to include `yearMonth`, `region`, and `taxa` as our level one predictors. `age2` was included as level three (federation) predictor since we hypothesized that the age of federation would impact the efficiency of catching fish (logcpue) of its subsidiary cooperation. Therefore, two models were fitted. One that includes interactions between age of federations and region and between age of federations and taxa, and one that does not include any interactions. AIC and BIC of both models were compared. Since both AIC and BIT are lower for model with additional interaction effects, providing evidence that model with interactions is a better model, which is our final model. One thing to note is that no random slopes were included in level two or three in both model because adding them make the model too complex and too computational heavy.
+Based on the EDA and model with only time as level one predictors, we decided to include `yearMonth`, `region`, and `taxa` as our level one predictors. `age2` was included as level three (federation) predictor since we hypothesized that the age of federation would impact the efficiency of catching fish (logcpue) of its subsidiary cooperation. Therefore, two models were fitted. One that includes interactions between age of federations and region and between age of federations and taxa, and one that does not include any interactions. AIC and BIC of both models were compared. Since both AIC and BIC are lower for model with additional interaction effects, providing evidence that model with interactions is a better model. One thing to note is that no random slopes were included in level two or three in both model because adding them make the model too complex and too computational heavy.
+
+```{r}
+model_no_int_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2 
+                         + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
+           data = x, na.action = na.omit)
+summary(model_no_int_mgcv)
+```
 
 ```{r, cache=TRUE}
 model_no_int <- lme(logcpue ~ yearMonth + region + taxa + age2, 
                      list(fed = ~1, uniqueid = ~1), 
                             data = x, na.action = na.omit)
 summary(model_no_int)
+```
+
+```{r}
+model_int_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2 
+                         + age2:region + age2:taxa +
+                         + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
+           data = x, na.action = na.omit)
+summary(model_int_mgcv)
 ```
 
 ```{r, cache=TRUE}
@@ -314,11 +312,31 @@ model_int <- lme(logcpue ~ yearMonth + region + taxa + age2 + age2:region + age2
 summary(model_int)
 ```
 
+Moreover, we have also tried adding different interactions in the model, such as interactions effects betwen yearMonth and region and between yearMonth and taxa as shown below. However, the model selection criterion by AIC and BIC is higher that than that for the previous model. Therefore, model with interactions between age2 and region and between age2 and taxa is our final model.
+
+```{r}
+model_int2_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2 
+                         + yearMonth:region + yearMonth:taxa +
+                         + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
+           data = x, na.action = na.omit)
+summary(model_int2_mgcv)
+```
+
+```{r}
+model_int2<- lme(logcpue ~ yearMonth + region + taxa + age2 + yearMonth:region + yearMonth:taxa, 
+                     list(fed = ~1, uniqueid = ~1), 
+                            data = x, na.action = na.omit)
+summary(model_int2)
+```
+
+
+## Final Model
+
 **Level 1 Model: Time**
 
 $$ Logcpue_{ijk} = a_{ij} + b_{ij} yearMonth_{ijk} + c_{ij} region_{ijk} + d_{ij} taxa_{ijk} + \epsilon_{ijk}, \space \epsilon_{ijk} \sim N(0, \sigma^2)$$
 
-**Level 2 Model: Organizations**
+**Level 2 Model: Cooperations**
 
 $$a_{ij} = a_i + u_{ij}$$
 
@@ -352,16 +370,24 @@ $$\epsilon_{ijk} \sim N(0, \sigma^2),u_{ij} \sim N(0, \sigma_{u}^2), \tilde u_{i
 
 ## Model Diagnostics
 
-### linearity 
+```{r}
+anova(model_int_mgcv)
+```
+
+### Linearity 
 
 ```{r}
-ggplot(data.frame(yearMonth=x_na$yearMonth,pearson=residuals(model_int,type="pearson")),
+x_na <- na.omit(x)
+```
+
+```{r}
+ggplot(data.frame(yearMonth=x_na$yearMonth,pearson=residuals(model_int_mgcv,type="pearson")),
       aes(x=yearMonth,y=pearson)) +
     geom_point() +
     theme_bw()
 ```
 
-The residuals are randomly scattered, suggesting that there is linear relationship for yearMonth.
+The residuals are randomly scattered, indicating that the data is linear and that there is a linear relationship between yearMonth and response.
 
 ## Normality
 
@@ -369,10 +395,37 @@ The residuals are randomly scattered, suggesting that there is linear relationsh
 qqnorm(residuals(model_int))
 ```
 
-## Residual plot
+Points mostly fall along a straight diagonal line on the normal quantile plot, so we can safely assume that the data is normally distributed.
+
+## Constant Variance
 
 ```{r}
 plot(model_int)
 ```
 
+The vertical spread of the residuals is not constant across the residual plot, suggesting that the constant variance condition is violated for linear mixed effects model. Therefore, some transformation should be done in the future to address this problem.
 
+## Colinearity
+
+```{r}
+vif(model_int)
+```
+
+The VIF value for `age2` is over 5, which is potentially concerning. Future model thus should take colinearity into consideration in modeling logcpue.
+
+## Prediction
+
+```{r}
+# generate prediction file
+model <- model_int_mgcv
+data <- x %>% 
+  filter(is.na(logcpue)) 
+################
+
+df <- data %>%
+  mutate(prediction = predict(model,data))%>% 
+  select(c('prediction')) 
+df <- cbind(index = rownames(df),df)
+df$index <- as.numeric(as.character(df$index))
+write.csv(df,'predictions.csv',row.names = FALSE) # format: index,prediction
+```
