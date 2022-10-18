@@ -1,0 +1,131 @@
+---
+title: "LMM_fisheries"
+author: "Medy Mu"
+date: '2022-10-13'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Input Data; Basic Data Processing
+```{r}
+x<-read.csv("fullSetWithMask.csv",as.is=TRUE,
+            na.strings=c("NA",".",""," "))
+dim(x) ## Check the dimension (number of rows and columns) of the data matrix.
+head(x)
+```
+
+
+```{r}
+## Drop Column of Row Numbers:
+x<-x[,-1]
+## Rename a Few Variables:
+colnames(x)[colnames(x)=="taxa_grouped_weight"]<-"taxa"
+colnames(x)[colnames(x)=="agremiacion_fed"]<-"fed"
+colnames(x)[colnames(x)=="coop_edad_10"]<-"age"
+colnames(x)[colnames(x)=="rr"]<-"region"
+x$uniqueid<-as.factor(x$uniqueid)
+x$fed<-as.factor(x$fed)
+x$taxa<-as.factor(x$taxa)
+x$region<-as.factor(x$region)
+x$yearFactor<-as.factor(x$year)
+x$monthFactor<-as.factor(x$month)
+```
+
+## 2. Basic Summaries
+```{r}
+table(x$taxa,useNA="always")
+table(x$region,useNA="always")
+length(unique(x$uniqueid))
+length(unique(x$fed))
+table(x$year)
+summary(x$age)
+summary(x$age[x$uniqueid=="00000-BCSCAM"])
+x$age2<-((10*x$age) + (x$year - 2016))
+summary(x$age2)
+table(x$age2<0)
+tbl<-table(as.character(x$uniqueid)[x$age2<0]); tbl
+table(x$age2[x$uniqueid %in% names(tbl)],
+      as.character(x$uniqueid[x$uniqueid %in% names(tbl)]),
+      useNA="always")
+## Naive Age Fix (the years associated w/ these samples may be incorrect):
+x$age[(x$uniqueid=="00549-TAB")&(x$age2<0)]<-(x$age[(x$uniqueid=="00549-TAB")&(x$age2<0)] + 0.5)
+x$age[(x$uniqueid=="00685-BCS")&(x$age2<0)]<-(x$age[(x$uniqueid=="00685-BCS")&(x$age2<0)] + 0.2)
+x$age[(x$uniqueid=="00747-YUC")&(x$age2<0)]<-(x$age[(x$uniqueid=="00747-YUC")&(x$age2<0)] + 0.6)
+x$age[(x$uniqueid=="00748-YUC")&(x$age2<0)]<-(x$age[(x$uniqueid=="00748-YUC")&(x$age2<0)] + 0.2)
+x$age2<-((10*x$age) + (x$year - 2016))
+summary(x$age2)
+```
+
+## 2.2 Taxa by coop
+
+```{r}
+tbl<-table(x$uniqueid,x$taxa)
+dim(tbl)
+summary(coopByTaxa<-as.numeric(tbl))
+table(coopByTaxa==0)
+coopByTaxa<-coopByTaxa[coopByTaxa>0]
+hist(coopByTaxa,nclass=50,las=1)
+```
+
+## 3. Client's LME model
+
+
+Note, from the nlme::ACF documentation: “This method function calculates the empirical autocorrelation function for the within-group residuals from an lme fit. The autocorrelation values are calculated using pairs of residuals within the innermost group level. The autocorrelation function is useful for investigating serial correlation models for equally spaced data.”
+
+### 3.1 Full data set
+
+```{r}
+keep<-(!is.na(x$logcpue))
+lme.out<-nlme::lme(logcpue ~ age + yearFactor + monthFactor + region + taxa,
+                   random = ~ 1|fed/uniqueid, data=x,subset=keep)
+summary(lme.out)$tTable
+acf.lme<-nlme::ACF(lme.out,maxLag=15)
+plot(acf.lme,alpha=0.01/15)
+```
+
+```{r}
+acf.lme<-acf.lme[-1,]
+plot(acf.lme,alpha=0.005)
+```
+
+```{r}
+qqnorm(fedn.re<-unlist(nlme::ranef(lme.out)$fed),las=1)
+abline(a=0,b=sd(fedn.re),lwd=2,col=2)
+```
+
+```{r}
+qqnorm(uid.re<-unlist(nlme::ranef(lme.out)$uniqueid))
+abline(a=0,b=sd(uid.re),lwd=2,col=2)
+```
+
+### 3.2 Single taxa model
+
+```{r}
+keep<-((x$taxa=="OTRAS")&(!is.na(x$logcpue)))
+otras.out<-nlme::lme(logcpue ~ age + yearFactor + monthFactor + region,
+                     random = ~ 1|fed/uniqueid, data=x,subset=keep)
+summary(otras.out)$tTable
+
+acf.otras<-nlme::ACF(otras.out,maxLag=15)
+plot(acf.otras,alpha=0.01/15)
+```
+
+```{r}
+acf.otras<-acf.otras[-1,]
+plot(acf.otras,alpha=0.005)
+```
+
+```{r}
+qqnorm(fedn.re<-unlist(nlme::ranef(otras.out)$fed),las=1)
+abline(a=0,b=sd(fedn.re),lwd=2,col=2)
+```
+
+```{r}
+qqnorm(uid.re<-unlist(nlme::ranef(otras.out)$uniqueid))
+abline(a=0,b=sd(uid.re),lwd=2,col=2)
+```
+
+## 4 Your mgcv Models
