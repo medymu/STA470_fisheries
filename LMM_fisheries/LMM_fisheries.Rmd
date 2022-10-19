@@ -6,7 +6,9 @@ output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, 
+                      warning = F, 
+                      message = F)
 ```
 
 ```{r}
@@ -229,7 +231,7 @@ ggplot(data = x, aes(x = region, y = logcpue)) +
   theme_bw() 
 ```
 
-```{r}
+```{r, fig.width = 9, fig.height = 5}
 ggplot(data = x, aes(x = taxa, y = logcpue)) +
   geom_boxplot(fill = "darkgreen", color = "black") +
   labs(x = "Taxa",
@@ -261,7 +263,7 @@ summary(unconditional_means)
 Next, to understand the effect of time before adding other Level One covariates, the model that only includes year and month as Level One predictors was fitted. The Pseudo $R^2$ estimating the change in within-cooperation variance between the unconditional means and the Model with Time is about 0.42. Therefore, understanding changes of time (i.e. years) accounts for 42% variability in logcpue.
 
 ```{r, cache=TRUE}
-model_time <- lme(logcpue ~ yearMonth, random = list(fed = ~yearMonth + 1, uniqueid = ~yearMonth + 1), 
+model_time <- lme(logcpue ~ yearMonth, random = list(fed = ~yearMonth, uniqueid = ~yearMonth), 
                   data = x, na.action = na.omit)
 summary(model_time)
 ```
@@ -313,7 +315,7 @@ glance(model_no_int_mgcv) %>%
   kable(digits = 0, caption = "AIC and BIC for Model with Interactions")
 ```
 
-Moreover, we have also tried adding different interactions in the model, such as interactions effects betwen yearMonth and region and between yearMonth and taxa as shown below. However, the model selection criterion by AIC and BIC is higher that than that for the previous model. Therefore, model with interactions between age2 and region and between age2 and taxa is our final model.
+Moreover, we have also tried adding different interactions in the model, such as interactions effects betwen yearMonth and region and between yearMonth and taxa as shown below. However, the model selection criterion by AIC and BIC is higher that than that for the previous model. Therefore, model with interactions between age2 and region and between age2 and taxa performed better than other interactions models.
 
 ```{r}
 model_int2_mgcv <- bam(logcpue ~ yearMonth + region + taxa + age2 
@@ -334,8 +336,7 @@ glance(model_int2_mgcv) %>%
   kable(digits = 0, caption = "AIC and BIC for Model with New Interactions")
 ```
 
-
-## Final Model
+## Model in mathematical form
 
 **Level 1 Model: Time**
 
@@ -373,82 +374,97 @@ $$ = \alpha_0 + \alpha_1 age_{i} + \beta_0 yearMonth_{ijk} + \gamma_0 region_{ij
 $$+ [\tilde u_{i} + u_{ij} + \epsilon_{ijk}] $$
 $$\epsilon_{ijk} \sim N(0, \sigma^2),u_{ij} \sim N(0, \sigma_{u}^2), \tilde u_{i} \sim N(0, \sigma_{\tilde u}^2)$$
 
+## Model improvement based on 10/18 class code
+
+Based on the bam code discussed in class on 10/18, we made some improvement to our model with interactions between age2 and region and between age2 and taxa. We decided to add smooth function to age2 since age2 is not strictly linear from the data. This model, indeed, has the lowest AIC and BIC values compared to our model without smooth term. Therefore, this model is our final model. Anova output of this model is provided in model diagnostics section.
+
+```{r}
+k_values<-c(3,6,9,12,15)
+AIC_ls<- c()
+
+for (k in k_values){
+  model_mgcv_sm <- bam(logcpue ~ yearMonth + region + taxa + s(age2, bs="cr",k=k) 
+                         + s(age2,region,bs="fs",k=k)
+                         + s(age2,taxa,bs="fs",k=k) +
+                         + s(fed, bs = "re") + s(uniqueid, bs = "re"),
+                       data = x, na.action = na.omit)
+  AIC=AIC(model_mgcv_sm)
+  AIC_ls<- append(AIC_ls, AIC)
+}
+min_idx=which.min(AIC_ls)
+```
+
+```{r}
+k_values[min_idx]
+```
+
+```{r}
+model_mgcv_sm_final <- bam(logcpue ~ yearMonth + region + taxa + s(age2, bs="cr",k=k) 
+                         + s(age2,region,bs="fs",k=k_values[min_idx])
+                         + s(age2,taxa,bs="fs",k=k_values[min_idx]) +
+                         + s(fed, bs = "re") + s(uniqueid, bs = "re"), 
+                         data = x, na.action = na.omit)
+```
+
+```{r}
+glance(model_mgcv_sm_final) %>% 
+  select(AIC, BIC) %>%
+  kable(digits = 0, caption = "AIC and BIC for Model with smooth terms")
+```
+
+### Sidenote
+
+Shown below are two models we wish to fit that includes cooperation to cooperation difference in slopes for region and taxa. Based on our domain knowledge, the effects of region and taxa of the fish caught varies based on each cooperation since different cooperations may have different fishing strategies, etc. However, runing the models below using either `mgcv` or `lme` took hours to run, so we decided to not select the model with random slope due to its computational load.
+
+```{r, eval = FALSE}
+bam(logcpue ~ yearMonth + region + taxa + age2 
+    + age2:region + age2:taxa 
+    + s(fed, bs = "re") + s(uniqueid, bs = "re") 
+    + s(fed, bs = "re") + s(uniqueid, region, bs = "re") 
+    + s(uniqueid, taxa, bs = "re"), 
+    data = x, na.action = na.omit)
+
+lme(logcpue ~ yearMonth + region + taxa + age2 
+    + age2:region + age2:taxa, 
+    list(fed = ~1, uniqueid = ~region + taxa), 
+    data = x, na.action = na.omit)
+
+```
+
 ## Model Diagnostics
 
 ```{r}
-anova(model_int_mgcv)
+anova(model_mgcv_sm_final)
+par(mfrow=c(2,2))
+plot(model_mgcv_sm_final,scale=0)
 ```
-
-### Linearity 
-
-```{r}
-x_na <- na.omit(x)
-```
-
-```{r}
-ggplot(data.frame(yearMonth=x_na$yearMonth,pearson=residuals(model_int_mgcv,type="pearson")),
-      aes(x=yearMonth,y=pearson)) +
-    geom_point() +
-    theme_bw()
-```
-
-```{r}
-ggplot(data.frame(age2=x_na$age2,pearson=residuals(model_int_mgcv,type="pearson")),
-      aes(x=age2,y=pearson)) +
-    geom_point() +
-    theme_bw()
-```
-
-```{r}
-ggplot(data.frame(region=x_na$region,pearson=residuals(model_int_mgcv,type="pearson")),
-      aes(x=region,y=pearson)) +
-    geom_point() +
-    theme_bw()
-```
-
-```{r}
-ggplot(data.frame(taxa=x_na$taxa,pearson=residuals(model_int_mgcv,type="pearson")),
-      aes(x=taxa,y=pearson)) +
-    geom_point() +
-    theme_bw()
-```
-
-The residuals are randomly scattered, indicating that the data is linear and that there is a linear relationship between our predictors and the response.
 
 ## Normality
 
 ```{r}
-qqnorm(residuals(model_int_mgcv))
+qqnorm(residuals(model_mgcv_sm_final))
 ```
 
 Points mostly fall along a straight diagonal line on the normal quantile plot, so we can safely assume that the data is normally distributed.
 
-## Constant Variance
+## Residual plot
 
 ```{r}
-res <- resid(model_int_mgcv)
-plot(fitted(model_int_mgcv), res)
+res <- resid(model_mgcv_sm_final)
+plot(fitted(model_mgcv_sm_final), res)
 ```
 
 ```{r}
-hist(model_int_mgcv$residuals)
+hist(model_mgcv_sm_final$residuals)
 ```
 
-The vertical spread of the residuals is not constant across the residual plot, suggesting that the constant variance condition is violated for linear mixed effects model. Therefore, some transformation should be done in the future to address this problem.
-
-## Colinearity
-
-```{r}
-vif(model_int)
-```
-
-The VIF value for `age2` is over 5, which is potentially concerning. Future model thus should take colinearity into consideration in modeling logcpue.
+The vertical spread of the residuals is not constant across the residual plot, suggesting that the constant variance condition is violated for this model. Therefore, some transformation should be done in the future to address this problem.
 
 ## Prediction
 
 ```{r}
 # generate prediction file
-model <- model_int_mgcv
+model <- model_mgcv_sm_final
 data <- x %>% 
   filter(is.na(logcpue)) 
 ################
@@ -460,5 +476,4 @@ df <- cbind(index = rownames(df),df)
 df$index <- as.numeric(as.character(df$index))
 write.csv(df,'predictions.csv',row.names = FALSE) # format: index,prediction
 ```
-
 
